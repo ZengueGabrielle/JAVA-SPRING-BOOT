@@ -1,0 +1,975 @@
+openapi: 3.0.3
+info:
+  title: Amazon Prime Next-Gen API
+  description: >
+    Spécification de l'API REST pour la plateforme de streaming type Amazon Prime incluant des fonctionnalités avancées (Next-Gen).
+    Cette API gère l'authentification, le catalogue de contenus, les profils avec classifications par âge, ainsi que de nombreuses
+    fonctionnalités inédites telles que la détection de fillers, les Watch Parties, et le Smart Catch-up.
+  version: 1.0.0
+  contact:
+    name: Support API
+    email: support@prime-nextgen.local
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Serveur de développement local (Version 1)
+  - url: https://api.prime-nextgen.com/v1
+    description: Serveur de production principal (Version 1)
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Token JWT requis pour s'authentifier. 
+        Passez le token dans l'en-tête `Authorization: Bearer <token>`.
+  schemas:
+    # --- COMMON ---
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-05-03T14:30:00Z'
+        status:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: 'Bad Request'
+        message:
+          type: string
+          example: 'Message descriptif de l''erreur'
+        path:
+          type: string
+          example: '/api/v1/resource'
+    PaginationMetadata:
+      type: object
+      properties:
+        currentPage:
+          type: integer
+          example: 0
+        pageSize:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          example: 150
+        totalPages:
+          type: integer
+          example: 8
+        hasNext:
+          type: boolean
+          example: true
+
+    # --- USERS & AUTH ---
+    RegisterRequest:
+      type: object
+      required: [username, email, password, firstName, lastName]
+      properties:
+        username:
+          type: string
+          example: 'johndoe89'
+        email:
+          type: string
+          format: email
+          example: 'user@example.com'
+        password:
+          type: string
+          format: password
+          example: 'StrongP@ssw0rd'
+        firstName:
+          type: string
+          example: 'John'
+        lastName:
+          type: string
+          example: 'Doe'
+        profilePicture:
+          type: string
+          format: binary
+          description: 'Fichier image pour la photo de profil (optionnel)'
+          
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          description: 'Nom d''utilisateur OU adresse email pour la connexion'
+          example: 'johndoe89'
+        password:
+          type: string
+          format: password
+          
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: 'JWT Bearer token'
+        user:
+          $ref: '#/components/schemas/User'
+          
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: 'johndoe89'
+        email:
+          type: string
+          example: 'user@example.com'
+        firstName:
+          type: string
+          example: 'John'
+        lastName:
+          type: string
+          example: 'Doe'
+        profilePicture:
+          type: string
+          example: 'https://cdn.prime.local/avatars/user1.png'
+        subscriptionStatus:
+          type: string
+          enum: [ACTIVE, INACTIVE, CANCELLED]
+          example: 'ACTIVE'
+        createdAt:
+          type: string
+          format: date-time
+
+    # --- PROFILES ---
+    Profile:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 101
+        userId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: 'Enfant (8+)'
+        avatarUrl:
+          type: string
+          example: 'https://cdn.prime.local/avatars/kid.png'
+        ageLimite:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+          description: 'Tranche d''âge stricte en cascade'
+          example: '8+'
+        isGuest:
+          type: boolean
+          description: 'Indique si c''est un profil éphémère'
+          example: false
+        guestExpiresAt:
+          type: string
+          format: date-time
+          description: 'Date d''expiration si isGuest est true'
+        hasPin:
+          type: boolean
+          description: 'Indique si un code PIN protège la sortie de ce profil'
+          example: true
+        timeLimitStart:
+          type: string
+          format: time
+          description: 'Heure de début d''accès autorisé'
+          example: '08:00'
+        timeLimitEnd:
+          type: string
+          format: time
+          description: 'Heure de fin d''accès autorisé'
+          example: '21:00'
+          
+    ProfileCreateRequest:
+      type: object
+      required: [name, ageLimite]
+      properties:
+        name:
+          type: string
+          example: 'Invité Soirée'
+        avatarUrl:
+          type: string
+        ageLimite:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+          example: '18+'
+        isGuest:
+          type: boolean
+          example: true
+        pinCode:
+          type: string
+          pattern: '^[0-9]{4}$'
+          description: 'PIN optionnel à 4 chiffres'
+        timeLimitStart:
+          type: string
+          format: time
+        timeLimitEnd:
+          type: string
+          format: time
+          
+    PinVerifyRequest:
+      type: object
+      required: [pinCode]
+      properties:
+        pinCode:
+          type: string
+          pattern: '^[0-9]{4}$'
+          example: '1234'
+
+    # --- CATALOG & CONTENT ---
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5
+        name:
+          type: string
+          example: 'Action & Aventure'
+
+    Content:
+      type: object
+      discriminator:
+        propertyName: contentType
+      properties:
+        id:
+          type: integer
+          example: 1001
+        title:
+          type: string
+          example: 'The Boys'
+        description:
+          type: string
+          example: 'Un groupe de justiciers s''attaque à des super-héros corrompus.'
+        contentType:
+          type: string
+          enum: [MOVIE, SERIES]
+          example: 'SERIES'
+        releaseYear:
+          type: integer
+          example: 2019
+        ageRating:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+          example: '18+'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+        thumbnailUrl:
+          type: string
+          example: 'https://cdn.prime.local/thumbs/theboys.jpg'
+        requiresExtraPayment:
+          type: boolean
+          description: 'Indique si le contenu est en location ou requiert un Channel supplémentaire'
+          example: false
+
+    Movie:
+      allOf:
+        - $ref: '#/components/schemas/Content'
+        - type: object
+          properties:
+            durationMinutes:
+              type: integer
+              example: 125
+            director:
+              type: string
+              example: 'Eric Kripke'
+
+    Series:
+      allOf:
+        - $ref: '#/components/schemas/Content'
+        - type: object
+          properties:
+            totalSeasons:
+              type: integer
+              example: 3
+            creator:
+              type: string
+              example: 'Eric Kripke'
+
+    Episode:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5001
+        seriesId:
+          type: integer
+          example: 1001
+        seasonNumber:
+          type: integer
+          example: 1
+        episodeNumber:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: 'Le nom du jeu'
+        durationMinutes:
+          type: integer
+          example: 60
+        isFiller:
+          type: boolean
+          description: "Indique si c'est un épisode hors-manga (Filler)"
+          example: false
+        hasPostCreditsScene:
+          type: boolean
+          description: "Indique la présence d'une scène post-générique"
+          example: true
+
+    # --- USER INTERACTIONS ---
+    WatchlistItem:
+      type: object
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        addedAt:
+          type: string
+          format: date-time
+          
+    WatchlistAddRequest:
+      type: object
+      required: [contentId]
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+          
+    ViewingHistory:
+      type: object
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        episodeId:
+          type: integer
+          description: "ID de l'épisode si c'est une série"
+          example: 5001
+        progressSeconds:
+          type: integer
+          description: "Progression en secondes"
+          example: 1800
+        lastWatchedAt:
+          type: string
+          format: date-time
+          
+    HistoryUpdateRequest:
+      type: object
+      required: [contentId, progressSeconds]
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        episodeId:
+          type: integer
+          example: 5001
+        progressSeconds:
+          type: integer
+          example: 1800
+          
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        contentId:
+          type: integer
+          example: 1001
+        userId:
+          type: integer
+          example: 42
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: 'Incroyable série !'
+        createdAt:
+          type: string
+          format: date-time
+          
+    ReviewRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: 'Incroyable série !'
+
+    # --- NEXT-GEN FEATURES ---
+    SmartCatchUpResponse:
+      type: object
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        summaryText:
+          type: string
+          description: "Résumé généré par IA basé sur les épisodes déjà vus"
+          example: "Précédemment, Butcher a découvert la vérité sur..."
+        videoUrl:
+          type: string
+          description: "URL de la vidéo récapitulative personnalisée (30s)"
+          example: "https://video-edge.prime.local/catchup/1001_user42.mp4"
+          
+    SoundtrackSyncResponse:
+      type: object
+      properties:
+        trackName:
+          type: string
+          example: "Shape of My Heart"
+        artist:
+          type: string
+          example: "Sting"
+        spotifyUrl:
+          type: string
+          example: "https://open.spotify.com/track/..."
+        deezerUrl:
+          type: string
+          example: "https://www.deezer.com/track/..."
+          
+    Challenge:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "Binge-Watcher de l'Extrême"
+        description:
+          type: string
+          example: "Regardez une saison complète en moins de 24h."
+        rewardBadgeUrl:
+          type: string
+          example: "https://cdn.prime.local/badges/binge.png"
+        isCompleted:
+          type: boolean
+          example: false
+          
+    ProfilePreferences:
+      type: object
+      properties:
+        dualSubtitlesEnabled:
+          type: boolean
+          description: "Active l'affichage de deux flux de sous-titres simultanés"
+          example: true
+        audioFocusLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Niveau du volume des dialogues (IA) vs effets sonores (50 = équilibré)"
+          example: 80
+        sdrToHdrEnabled:
+          type: boolean
+          description: "Active le boost colorimétrique simulé pour les anciens contenus"
+          example: true
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Numéro de la page (index 0)
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    SizeParam:
+      name: size
+      in: query
+      description: Nombre d'éléments par page
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Non autorisé
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Accès refusé
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Erreur interne du serveur
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+paths:
+  /auth/register:
+    post:
+      summary: Inscription d'un nouvel utilisateur
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Utilisateur créé avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          
+  /auth/login:
+    post:
+      summary: Connexion
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          
+  /users/me:
+    get:
+      summary: Obtenir les informations de l'utilisateur courant
+      tags: [Users]
+      responses:
+        '200':
+          description: Informations de l'utilisateur
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          
+  /profiles:
+    get:
+      summary: Lister les profils de l'utilisateur
+      tags: [Profiles]
+      responses:
+        '200':
+          description: Liste des profils
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Créer un nouveau profil (incluant Guest Profile)
+      tags: [Profiles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileCreateRequest'
+      responses:
+        '201':
+          description: Profil créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          
+  /profiles/{id}/verify-pin:
+    post:
+      summary: Vérifier le code PIN pour contourner une restriction d'âge ou changer de profil
+      tags: [Profiles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PinVerifyRequest'
+      responses:
+        '200':
+          description: PIN correct, accès temporaire accordé
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /contents:
+    get:
+      summary: Lister le catalogue de contenus avec filtres (UX Anti-Frustration)
+      tags: [Catalog]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+        - name: minAge
+          in: query
+          description: Filtrage en cascade basé sur l'ageLimite du profil actif
+          schema:
+            type: string
+            enum: ['TP', '8+', '12+', '16+', '18+']
+        - name: zeroCostOnly
+          in: query
+          description: "Filtre Zéro Coût: true pour exclure tout ce qui nécessite un paiement supplémentaire"
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Liste paginée des contenus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Content'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /contents/{id}:
+    get:
+      summary: Détails complets d'un contenu (Film ou Série)
+      tags: [Catalog]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Content'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contents/{id}/stream:
+    get:
+      summary: Obtenir l'URL de streaming vidéo et métadonnées
+      tags: [Catalog]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: URL du flux HLS/DASH et options d'accessibilité
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  streamUrl:
+                    type: string
+                    example: 'https://video-edge.prime.local/hls/1001/master.m3u8'
+                  availableSubtitles:
+                    type: array
+                    description: "Permet le Dual Subtitles"
+                    items:
+                      type: string
+                      example: 'fr-FR'
+                  audioTracks:
+                    type: array
+                    description: "Pistes audio pour l'Audio Focus (IA)"
+                    items:
+                      type: string
+                      example: 'fr-FR (Dialogues Boostés)'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /profiles/{id}/watchlist:
+    get:
+      summary: Consulter la Watchlist du profil
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WatchlistItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Ajouter un contenu à la Watchlist
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistAddRequest'
+      responses:
+        '201':
+          description: Ajouté avec succès
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /profiles/{id}/watchlist/{contentId}:
+    delete:
+      summary: Retirer un contenu de la Watchlist
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: contentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Retiré avec succès
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /profiles/{id}/history:
+    get:
+      summary: Obtenir l'historique de visionnage du profil
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ViewingHistory'
+    put:
+      summary: Mettre à jour l'historique de visionnage (Sauvegarde de progression)
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistoryUpdateRequest'
+      responses:
+        '200':
+          description: Historique mis à jour
+
+  /contents/{id}/reviews:
+    get:
+      summary: Consulter les avis d'un contenu
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+    post:
+      summary: Ajouter un avis sur un contenu
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: Avis ajouté
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /contents/{id}/smart-catchup:
+    get:
+      summary: Générer un résumé Smart Catch-up (IA)
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Résumé personnalisé généré avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmartCatchUpResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contents/{id}/soundtrack/current:
+    get:
+      summary: Soundtrack Live Sync
+      description: "Récupère les informations musicales de la scène actuellement visionnée (nécessite l'envoi du timestamp de lecture en query)"
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: timestampSeconds
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Informations sur la musique en cours
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SoundtrackSyncResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/me/challenges:
+    get:
+      summary: Liste des défis communautaires (Gamification)
+      tags: [Next-Gen]
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Challenge'
+
+  /profiles/{id}/preferences:
+    put:
+      summary: Mettre à jour les préférences d'immersion (SDR to HDR, Audio Focus)
+      tags: [Profiles, Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfilePreferences'
+      responses:
+        '200':
+          description: Préférences mises à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfilePreferences'
