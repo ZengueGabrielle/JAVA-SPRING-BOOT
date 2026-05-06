@@ -1,0 +1,2172 @@
+openapi: 3.0.3
+info:
+  title: Amazon Prime Next-Gen API
+  description: >
+    Spécification complète de l'API REST pour la plateforme de streaming Amazon Prime Next-Gen.
+    Cette API couvre l'authentification JWT, la gestion des utilisateurs et abonnements,
+    les profils multi-utilisateurs avec contrôle parental, le catalogue de contenus (films & séries),
+    les interactions (watchlist, historique, avis), les téléchargements offline, les recommandations,
+    les notifications, et des fonctionnalités Next-Gen exclusives telles que le Smart Catch-up IA,
+    la détection de Fillers, le Soundtrack Live Sync, les Watch Parties collaboratives et la gamification.
+  version: 2.0.0
+  contact:
+    name: Support API Prime Next-Gen
+    email: support@prime-nextgen.local
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Serveur de développement local
+  - url: https://api.prime-nextgen.com/v1
+    description: Serveur de production principal
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Inscription, connexion, déconnexion et gestion des tokens
+  - name: Users
+    description: Profil utilisateur et gestion du compte
+  - name: Subscriptions
+    description: Abonnements et paiements
+  - name: Notifications
+    description: Centre de notifications utilisateur
+  - name: Profiles
+    description: Gestion des profils (jusqu'à 6 par compte, avec contrôle parental)
+  - name: Catalog
+    description: Catalogue de films et séries avec filtres avancés
+  - name: Interactions
+    description: Watchlist, historique de visionnage, avis et notes
+  - name: Downloads
+    description: Téléchargements pour visionnage hors ligne
+  - name: Recommendations
+    description: Recommandations personnalisées par IA
+  - name: Next-Gen
+    description: Fonctionnalités exclusives (Smart Catch-up, Watch Party, Gamification, Soundtrack Sync)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Token JWT requis pour toutes les routes protégées.
+        Passez le token dans l'en-tête `Authorization: Bearer <token>`.
+
+  schemas:
+
+    # ===================== COMMON =====================
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-05-03T14:30:00Z'
+        status:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: 'Bad Request'
+        message:
+          type: string
+          example: 'Message descriptif de l erreur'
+        path:
+          type: string
+          example: '/api/v1/resource'
+
+    PaginationMetadata:
+      type: object
+      properties:
+        currentPage:
+          type: integer
+          example: 0
+        pageSize:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          example: 150
+        totalPages:
+          type: integer
+          example: 8
+        hasNext:
+          type: boolean
+          example: true
+
+    # ===================== AUTH & USERS =====================
+    RegisterRequest:
+      type: object
+      required: [username, email, password, firstName, lastName]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          example: 'johndoe89'
+        email:
+          type: string
+          format: email
+          example: 'user@example.com'
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: 'StrongP@ssw0rd'
+        firstName:
+          type: string
+          example: 'John'
+        lastName:
+          type: string
+          example: 'Doe'
+        profilePicture:
+          type: string
+          format: binary
+          description: 'Fichier image pour la photo de profil (optionnel, multipart/form-data)'
+
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          description: 'Nom d utilisateur OU adresse email'
+          example: 'johndoe89'
+        password:
+          type: string
+          format: password
+          example: 'StrongP@ssw0rd'
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: 'Access Token JWT (durée de vie : 1h)'
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        refreshToken:
+          type: string
+          description: 'Refresh Token JWT (durée de vie : 30 jours)'
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        user:
+          $ref: '#/components/schemas/User'
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: 'Nouvel Access Token JWT'
+
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          description: 'Token reçu par email'
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+
+    EmailVerifyRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: 'johndoe89'
+        email:
+          type: string
+          example: 'user@example.com'
+        firstName:
+          type: string
+          example: 'John'
+        lastName:
+          type: string
+          example: 'Doe'
+        profilePicture:
+          type: string
+          example: 'https://cdn.prime.local/avatars/user1.png'
+        subscriptionStatus:
+          type: string
+          enum: [ACTIVE, INACTIVE, CANCELLED, PAST_DUE]
+          example: 'ACTIVE'
+        createdAt:
+          type: string
+          format: date-time
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          example: 'John'
+        lastName:
+          type: string
+          example: 'Doe'
+        profilePicture:
+          type: string
+          format: binary
+
+    # ===================== SUBSCRIPTION =====================
+    Subscription:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, CANCELLED, PAST_DUE]
+          example: 'ACTIVE'
+        planName:
+          type: string
+          example: 'Prime Next-Gen Premium'
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        autoRenew:
+          type: boolean
+          example: true
+        price:
+          type: number
+          format: float
+          example: 8.99
+        currency:
+          type: string
+          example: 'EUR'
+
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        type:
+          type: string
+          enum: [CREDIT_CARD, PAYPAL, MOBILE_MONEY]
+          example: 'CREDIT_CARD'
+        last4Digits:
+          type: string
+          example: '4242'
+        expiryDate:
+          type: string
+          example: '12/2028'
+        isDefault:
+          type: boolean
+          example: true
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 'dev-9876'
+        deviceName:
+          type: string
+          example: 'Samsung Smart TV'
+        deviceType:
+          type: string
+          enum: [SMART_TV, MOBILE, TABLET, WEB, CONSOLE]
+          example: 'SMART_TV'
+        lastActiveAt:
+          type: string
+          format: date-time
+
+    Purchase:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 8899
+        contentId:
+          type: integer
+          example: 1001
+        purchaseType:
+          type: string
+          enum: [RENT, BUY]
+          example: 'BUY'
+        amount:
+          type: number
+          format: float
+          example: 11.99
+        purchaseDate:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: 'Expiration pour une location (ex: 48h après lancement)'
+
+    # ===================== NOTIFICATIONS =====================
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        type:
+          type: string
+          enum: [WELCOME, NEW_CONTENT, CHALLENGE_COMPLETED, WATCH_PARTY_INVITE, SUBSCRIPTION_EXPIRING, DOWNLOAD_READY]
+          example: 'NEW_CONTENT'
+        title:
+          type: string
+          example: 'Nouveau contenu disponible !'
+        message:
+          type: string
+          example: 'La saison 2 de Reacher est maintenant disponible.'
+        isRead:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+
+    # ===================== PROFILES =====================
+    Profile:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 101
+        userId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: 'Enfant (8+)'
+        avatarUrl:
+          type: string
+          example: 'https://cdn.prime.local/avatars/kid.png'
+        ageLimite:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+          description: 'Classification parentale en cascade (cascade : 8+ voit aussi TP)'
+          example: '8+'
+        isGuest:
+          type: boolean
+          description: 'Profil éphémère (expire dans 24h)'
+          example: false
+        guestExpiresAt:
+          type: string
+          format: date-time
+        hasPin:
+          type: boolean
+          example: true
+        timeLimitStart:
+          type: string
+          format: time
+          example: '08:00'
+        timeLimitEnd:
+          type: string
+          format: time
+          example: '21:00'
+
+    ProfileCreateRequest:
+      type: object
+      required: [name, ageLimite]
+      properties:
+        name:
+          type: string
+          example: 'Invité Soirée'
+        avatarUrl:
+          type: string
+        ageLimite:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+          example: '18+'
+        isGuest:
+          type: boolean
+          example: false
+        pinCode:
+          type: string
+          pattern: '^[0-9]{4}$'
+          description: 'Code PIN à 4 chiffres (optionnel)'
+          example: '1234'
+        timeLimitStart:
+          type: string
+          format: time
+          example: '08:00'
+        timeLimitEnd:
+          type: string
+          format: time
+          example: '21:00'
+
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        ageLimite:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+        pinCode:
+          type: string
+          pattern: '^[0-9]{4}$'
+        timeLimitStart:
+          type: string
+          format: time
+        timeLimitEnd:
+          type: string
+          format: time
+
+    PinVerifyRequest:
+      type: object
+      required: [pinCode]
+      properties:
+        pinCode:
+          type: string
+          pattern: '^[0-9]{4}$'
+          example: '1234'
+
+    PinVerifyResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: 'PIN vérifié. Accès accordé.'
+        accessGrantedUntil:
+          type: string
+          format: date-time
+
+    ProfilePreferences:
+      type: object
+      properties:
+        dualSubtitlesEnabled:
+          type: boolean
+          description: 'Affichage simultané de deux flux de sous-titres'
+          example: true
+        audioFocusLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 'Volume des dialogues IA vs effets sonores (50 = équilibré)'
+          example: 80
+        sdrToHdrEnabled:
+          type: boolean
+          description: 'Boost colorimétrique simulé pour contenus SDR anciens'
+          example: true
+
+    # ===================== CATALOG =====================
+    Shelf:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 'shelf-trending'
+        title:
+          type: string
+          example: 'Top 10 en France aujourd hui'
+        contents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Content'
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5
+        name:
+          type: string
+          example: 'Action & Aventure'
+
+    Content:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1001
+        title:
+          type: string
+          example: 'The Boys'
+        description:
+          type: string
+          example: 'Un groupe de justiciers s attaque à des super-héros corrompus.'
+        contentType:
+          type: string
+          enum: [MOVIE, SERIES, ANIME, DOCUMENTARY, SHORT_FILM, LIVE_EVENT]
+          example: 'SERIES'
+        releaseYear:
+          type: integer
+          example: 2019
+        ageRating:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+          example: '18+'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+        tags:
+          type: array
+          description: 'Mots-clés / Sous-catégories (ex: K-Drama, Super-héros, SF)'
+          items:
+            type: string
+            example: 'Super-héros'
+        thumbnailUrl:
+          type: string
+          example: 'https://cdn.prime.local/thumbs/theboys.jpg'
+        trailerUrl:
+          type: string
+          nullable: true
+          example: 'https://video-edge.prime.local/trailers/theboys_trailer.mp4'
+        availabilityType:
+          type: string
+          enum: [INCLUDED_WITH_PRIME, RENT, BUY, CHANNEL_SUBSCRIPTION]
+          example: 'INCLUDED_WITH_PRIME'
+        rentPrice:
+          type: number
+          format: float
+          nullable: true
+          example: 4.99
+        buyPrice:
+          type: number
+          format: float
+          nullable: true
+          example: 11.99
+        videoQualities:
+          type: array
+          items:
+            type: string
+          example: ['4K UHD', 'HDR10', '1080p']
+        audioFormats:
+          type: array
+          items:
+            type: string
+          example: ['Dolby Atmos', '5.1']
+        durationMinutes:
+          type: integer
+          nullable: true
+          description: 'Durée en minutes (Films uniquement)'
+          example: 125
+        creditsStartSeconds:
+          type: integer
+          nullable: true
+          description: 'Moment exact où le générique de fin commence (Films)'
+        director:
+          type: string
+          nullable: true
+          description: 'Réalisateur (Films uniquement)'
+        totalSeasons:
+          type: integer
+          nullable: true
+          description: 'Nombre de saisons (Séries uniquement)'
+          example: 4
+        creator:
+          type: string
+          nullable: true
+          description: 'Créateur de la série (Séries uniquement)'
+
+    Episode:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5001
+        seriesId:
+          type: integer
+          example: 1001
+        seasonNumber:
+          type: integer
+          example: 1
+        episodeNumber:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: 'Le nom du jeu'
+        durationMinutes:
+          type: integer
+          example: 60
+        introStartSeconds:
+          type: integer
+          nullable: true
+          description: 'Début du générique d intro (pour afficher le bouton Skip)'
+          example: 120
+        introEndSeconds:
+          type: integer
+          nullable: true
+          description: 'Fin du générique d intro'
+          example: 180
+        creditsStartSeconds:
+          type: integer
+          nullable: true
+          description: 'Début du générique de fin (pour lancer le prochain épisode)'
+          example: 3450
+        isFiller:
+          type: boolean
+          description: 'Épisode hors-canon (filler) — peut être ignoré sans perdre le fil'
+          example: false
+        hasPostCreditsScene:
+          type: boolean
+          description: 'Présence d une scène post-générique'
+          example: true
+
+    StreamResponse:
+      type: object
+      properties:
+        streamUrl:
+          type: string
+          description: 'URL du flux HLS principal'
+          example: 'https://video-edge.prime.local/hls/1001/master.m3u8'
+        dashUrl:
+          type: string
+          description: 'URL du flux MPEG-DASH'
+          example: 'https://video-edge.prime.local/dash/1001/manifest.mpd'
+        availableSubtitles:
+          type: array
+          description: 'Codes langue disponibles (permet le Dual Subtitles)'
+          items:
+            type: string
+            example: 'fr-FR'
+        audioTracks:
+          type: array
+          description: 'Pistes audio disponibles (permet l Audio Focus IA)'
+          items:
+            type: string
+            example: 'fr-FR (Dialogues Boostés)'
+        drmToken:
+          type: string
+          description: 'Token DRM pour le déchiffrement du contenu'
+        expiresAt:
+          type: string
+          format: date-time
+          description: 'Expiration du lien de streaming (4h)'
+
+    # ===================== INTERACTIONS =====================
+    WatchlistItem:
+      type: object
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        title:
+          type: string
+          example: 'The Boys'
+        thumbnailUrl:
+          type: string
+        contentType:
+          type: string
+          enum: [MOVIE, SERIES]
+        addedAt:
+          type: string
+          format: date-time
+
+    WatchlistAddRequest:
+      type: object
+      required: [contentId]
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+
+    ViewingHistory:
+      type: object
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        episodeId:
+          type: integer
+          nullable: true
+          example: 5001
+        progressSeconds:
+          type: integer
+          example: 1800
+        lastWatchedAt:
+          type: string
+          format: date-time
+
+    HistoryUpdateRequest:
+      type: object
+      required: [contentId, progressSeconds]
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        episodeId:
+          type: integer
+          nullable: true
+          example: 5001
+        progressSeconds:
+          type: integer
+          example: 1800
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        contentId:
+          type: integer
+          example: 1001
+        userId:
+          type: integer
+          example: 42
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: 'Incroyable série !'
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: 'Incroyable série !'
+
+    # ===================== DOWNLOADS =====================
+    DownloadItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        contentId:
+          type: integer
+          example: 1001
+        episodeId:
+          type: integer
+          nullable: true
+          example: 5001
+        status:
+          type: string
+          enum: [PENDING, DOWNLOADING, COMPLETED, EXPIRED, FAILED]
+          example: 'COMPLETED'
+        expiresAt:
+          type: string
+          format: date-time
+          description: 'Expiration du téléchargement (30 jours)'
+        createdAt:
+          type: string
+          format: date-time
+
+    DownloadRequest:
+      type: object
+      required: [contentId]
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        episodeId:
+          type: integer
+          nullable: true
+          description: 'ID de l épisode pour les séries (optionnel pour les films)'
+          example: 5001
+
+    # ===================== RECOMMENDATIONS =====================
+    RecommendationResponse:
+      type: object
+      properties:
+        reason:
+          type: string
+          example: 'Basé sur votre historique de visionnage'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Content'
+
+    # ===================== NEXT-GEN =====================
+    SmartCatchUpResponse:
+      type: object
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+        summaryText:
+          type: string
+          description: 'Résumé IA personnalisé basé sur les épisodes vus'
+          example: 'Précédemment, Butcher a découvert la vérité sur...'
+        videoUrl:
+          type: string
+          description: 'URL vidéo récapitulative personnalisée (30s)'
+          example: 'https://video-edge.prime.local/catchup/1001_user42.mp4'
+        generatedAt:
+          type: string
+          format: date-time
+
+    SoundtrackSyncResponse:
+      type: object
+      properties:
+        trackName:
+          type: string
+          example: 'Shape of My Heart'
+        artist:
+          type: string
+          example: 'Sting'
+        albumArt:
+          type: string
+          example: 'https://cdn.prime.local/music/shape_of_my_heart.jpg'
+        spotifyUrl:
+          type: string
+          example: 'https://open.spotify.com/track/1yAZNdY0vblLMFZ8s2hGNh'
+        deezerUrl:
+          type: string
+          example: 'https://www.deezer.com/track/672309'
+        timestampSeconds:
+          type: integer
+          example: 1200
+
+    XRayActor:
+      type: object
+      properties:
+        actorName:
+          type: string
+          example: 'Karl Urban'
+        characterName:
+          type: string
+          example: 'Billy Butcher'
+        imageUrl:
+          type: string
+          example: 'https://cdn.prime.local/actors/karl_urban.jpg'
+
+    XRayResponse:
+      type: object
+      properties:
+        actorsOnScreen:
+          type: array
+          items:
+            $ref: '#/components/schemas/XRayActor'
+        trivia:
+          type: string
+          nullable: true
+          example: 'Cette scène a nécessité 15 prises à cause d un fou rire.'
+        currentSoundtrack:
+          $ref: '#/components/schemas/SoundtrackSyncResponse'
+          description: 'Informations musicales (Soundtrack Live Sync) incluses dans le flux X-Ray'
+
+    Challenge:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: 'Binge-Watcher de l Extrême'
+        description:
+          type: string
+          example: 'Regardez une saison complète en moins de 24h.'
+        rewardBadgeUrl:
+          type: string
+          example: 'https://cdn.prime.local/badges/binge.png'
+        isCompleted:
+          type: boolean
+          example: false
+
+    WatchParty:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 'wp-12345'
+        contentId:
+          type: integer
+          example: 1001
+        hostId:
+          type: integer
+          example: 42
+        participantIds:
+          type: array
+          items:
+            type: integer
+          example: [42, 89, 105]
+        status:
+          type: string
+          enum: [WAITING, PLAYING, PAUSED, ENDED]
+          example: 'WAITING'
+        positionSeconds:
+          type: integer
+          description: 'Position de lecture actuelle (en secondes)'
+          example: 0
+        createdAt:
+          type: string
+          format: date-time
+
+    WatchPartyCreateRequest:
+      type: object
+      required: [contentId]
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+
+    WatchPartyStateRequest:
+      type: object
+      required: [status, positionSeconds]
+      properties:
+        status:
+          type: string
+          enum: [PLAYING, PAUSED, ENDED]
+          example: 'PLAYING'
+        positionSeconds:
+          type: integer
+          example: 120
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Numéro de page (index 0)
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    SizeParam:
+      name: size
+      in: query
+      description: Nombre d éléments par page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    BadRequest:
+      description: Requête invalide (paramètre manquant ou incorrect)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Token JWT manquant ou invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Accès refusé (droits insuffisants)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Conflit (ressource déjà existante)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Erreur interne du serveur
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+# ==============================================================
+# PATHS
+# ==============================================================
+paths:
+
+  # ==================== AUTH ====================
+  /auth/register:
+    post:
+      summary: Inscription d un nouvel utilisateur
+      description: >
+        Crée un compte utilisateur. Accepte multipart/form-data pour permettre l upload
+        de la photo de profil. Un profil principal est créé automatiquement.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Compte créé. Retourne le token d accès et les infos utilisateur.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      summary: Connexion avec email ou nom d utilisateur
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Connexion réussie. Retourne le token JWT et le refresh token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      summary: Déconnexion (invalidation du token côté serveur)
+      tags: [Auth]
+      responses:
+        '200':
+          description: Déconnexion réussie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Déconnexion réussie'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      summary: Rafraîchir le token d accès avec le refresh token
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Nouveau token d accès généré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/forgot-password:
+    post:
+      summary: Demande de réinitialisation de mot de passe
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: Email de réinitialisation envoyé
+
+  /auth/reset-password:
+    post:
+      summary: Réinitialisation du mot de passe avec le token
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Mot de passe mis à jour
+
+  /auth/verify-email:
+    post:
+      summary: Vérification de l adresse email
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailVerifyRequest'
+      responses:
+        '200':
+          description: Email vérifié
+          
+  # ==================== USERS ====================
+  /users/me:
+    get:
+      summary: Obtenir le profil de l utilisateur connecté
+      tags: [Users]
+      responses:
+        '200':
+          description: Informations de l utilisateur
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Mettre à jour les informations personnelles
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Utilisateur mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== SUBSCRIPTION ====================
+  /users/me/subscription:
+    get:
+      summary: Consulter les détails de l abonnement
+      tags: [Users, Subscriptions]
+      responses:
+        '200':
+          description: Détails de l abonnement actif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/subscription/cancel:
+    post:
+      summary: Résilier l abonnement (fin de période en cours)
+      tags: [Subscriptions]
+      responses:
+        '200':
+          description: Abonnement résilié avec confirmation de la date de fin d accès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Abonnement annulé. Votre accès reste actif jusqu à la fin de la période en cours.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/payment-methods:
+    get:
+      summary: Lister les moyens de paiement enregistrés
+      tags: [Subscriptions]
+      responses:
+        '200':
+          description: Liste des moyens de paiement
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/devices:
+    get:
+      summary: Lister les appareils connectés au compte
+      tags: [Users]
+      responses:
+        '200':
+          description: Liste des appareils
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/devices/{deviceId}:
+    delete:
+      summary: Déconnecter un appareil à distance
+      tags: [Users]
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Appareil déconnecté
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/purchases:
+    get:
+      summary: Lister les achats et locations VOD de l utilisateur
+      tags: [Users, Subscriptions]
+      responses:
+        '200':
+          description: Historique d achats et locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Purchase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== NOTIFICATIONS ====================
+  /users/me/notifications:
+    get:
+      summary: Consulter les notifications de l utilisateur
+      tags: [Notifications]
+      parameters:
+        - name: unreadOnly
+          in: query
+          description: Si true, retourne uniquement les notifications non lues
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Liste des notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/notifications/{notifId}/read:
+    put:
+      summary: Marquer une notification comme lue
+      tags: [Notifications]
+      parameters:
+        - name: notifId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification marquée comme lue
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== PROFILES ====================
+  /profiles:
+    get:
+      summary: Lister les profils du compte (max 6)
+      tags: [Profiles]
+      responses:
+        '200':
+          description: Liste des profils
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Créer un nouveau profil (normal ou invité éphémère)
+      tags: [Profiles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileCreateRequest'
+      responses:
+        '201':
+          description: Profil créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /profiles/{id}:
+    put:
+      summary: Modifier un profil existant
+      tags: [Profiles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: Profil mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Supprimer un profil
+      tags: [Profiles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Profil supprimé avec succès
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /profiles/{id}/verify-pin:
+    post:
+      summary: Vérifier le code PIN d un profil (déblocage temporaire 30 min)
+      tags: [Profiles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PinVerifyRequest'
+      responses:
+        '200':
+          description: PIN correct — accès temporaire accordé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PinVerifyResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /profiles/{id}/preferences:
+    get:
+      summary: Obtenir les préférences d immersion du profil
+      tags: [Profiles, Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Préférences du profil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfilePreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Mettre à jour les préférences d immersion (SDR-to-HDR, Audio Focus, Dual Subtitles)
+      tags: [Profiles, Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfilePreferences'
+      responses:
+        '200':
+          description: Préférences mises à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfilePreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== HOME / DASHBOARD ====================
+  /home/dashboard:
+    get:
+      summary: Page d accueil personnalisée (Étagères/Bandes de contenu)
+      description: >
+        Retourne des listes de contenus organisées en étagères (Shelves)
+        comme "Continuer à regarder", "Top 10 en France", "Animés recommandés", etc.
+      tags: [Catalog]
+      responses:
+        '200':
+          description: Étagères de la page d accueil
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Shelf'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== CATALOG ====================
+  /categories:
+    get:
+      summary: Lister toutes les catégories de contenus
+      tags: [Catalog]
+      security: []
+      responses:
+        '200':
+          description: Liste des catégories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+
+  /contents:
+    get:
+      summary: Catalogue de contenus avec filtres avancés
+      description: >
+        Recherche full-text sur titre, description, réalisateur et créateur.
+        Filtres disponibles : genre, type de contenu, classification d âge, coût zéro.
+      tags: [Catalog]
+      parameters:
+        - name: q
+          in: query
+          description: Recherche textuelle (titre, réalisateur, créateur)
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: categoryId
+          in: query
+          description: Filtrer par catégorie
+          schema:
+            type: integer
+        - name: contentType
+          in: query
+          description: Filtrer par type de contenu
+          schema:
+            type: string
+            enum: [MOVIE, SERIES, ANIME, DOCUMENTARY, SHORT_FILM, LIVE_EVENT]
+        - name: tags
+          in: query
+          description: Filtrer par tags/mots-clés (ex: K-Drama, Éducatif)
+          schema:
+            type: array
+            items:
+              type: string
+        - name: minAge
+          in: query
+          description: >
+            Filtrage parental en cascade. Les résultats sont automatiquement 
+            filtrés par le serveur selon le profil actif (TP < 8+ < 12+ < 16+ < 18+).
+          schema:
+            type: string
+            enum: ['TP', '8+', '12+', '16+', '18+']
+        - name: availabilityType
+          in: query
+          description: 'Filtrer par disponibilité (Inclus avec Prime, VOD, etc.)'
+          schema:
+            type: string
+            enum: [INCLUDED_WITH_PRIME, RENT, BUY, CHANNEL_SUBSCRIPTION]
+      responses:
+        '200':
+          description: Liste paginée des contenus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Content'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /contents/{id}:
+    get:
+      summary: Détails complets d un film ou d une série
+      tags: [Catalog]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Détails du contenu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Content'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contents/{id}/episodes:
+    get:
+      summary: Lister les épisodes d une série (avec indicateur Filler et scène post-générique)
+      tags: [Catalog]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: seasonNumber
+          in: query
+          description: Filtrer par numéro de saison
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des épisodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Episode'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contents/{id}/stream:
+    get:
+      summary: Obtenir les URLs de streaming HLS/DASH avec token DRM
+      tags: [Catalog]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: URLs de streaming et options d accessibilité
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contents/{id}/reviews:
+    get:
+      summary: Consulter les avis d un contenu
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des avis
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Ajouter un avis (1 avis par utilisateur par contenu)
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: Avis ajouté
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /contents/{id}/reviews/{reviewId}:
+    put:
+      summary: Modifier son avis
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          description: Avis mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Supprimer son avis
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Avis supprimé
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== WATCHLIST ====================
+  /profiles/{id}/watchlist:
+    get:
+      summary: Consulter la watchlist d un profil
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des contenus dans la watchlist
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WatchlistItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Ajouter un contenu à la watchlist
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistAddRequest'
+      responses:
+        '201':
+          description: Contenu ajouté à la watchlist
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /profiles/{id}/watchlist/{contentId}:
+    delete:
+      summary: Retirer un contenu de la watchlist
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: contentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Contenu retiré de la watchlist
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== HISTORY ====================
+  /profiles/{id}/history:
+    get:
+      summary: Historique de visionnage avec progression
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Historique de visionnage
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ViewingHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Sauvegarder la progression de visionnage (heartbeat)
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistoryUpdateRequest'
+      responses:
+        '200':
+          description: Progression sauvegardée
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /profiles/{id}/history/{contentId}:
+    delete:
+      summary: Supprimer un élément de l historique
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: contentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Élément supprimé de l historique
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== DOWNLOADS ====================
+  /profiles/{id}/downloads:
+    get:
+      summary: Lister les téléchargements du profil (visionnage offline)
+      tags: [Downloads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des téléchargements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DownloadItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Lancer un téléchargement (film ou épisode) — expire dans 30 jours
+      tags: [Downloads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DownloadRequest'
+      responses:
+        '201':
+          description: Téléchargement initié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /profiles/{id}/downloads/{downloadId}:
+    delete:
+      summary: Supprimer un téléchargement
+      tags: [Downloads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: downloadId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Téléchargement supprimé
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== RECOMMENDATIONS ====================
+  /profiles/{id}/recommendations:
+    get:
+      summary: Obtenir des recommandations personnalisées par IA pour le profil
+      tags: [Recommendations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Recommandations personnalisées
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== NEXT-GEN ====================
+  /contents/{id}/smart-catchup:
+    get:
+      summary: Smart Catch-up IA — résumé personnalisé basé sur votre progression
+      description: >
+        Génère un résumé textuel et vidéo des épisodes déjà vus, personnalisé
+        pour l utilisateur connecté. Idéal avant de reprendre une série après une pause.
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Résumé personnalisé généré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmartCatchUpResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contents/{id}/xray/current:
+    get:
+      summary: X-Ray et Soundtrack Live Sync
+      description: >
+        Identifie les acteurs à l écran, fournit des anecdotes (Trivia), 
+        et retourne la musique jouant à l instant T (avec liens Spotify/Deezer).
+        C est la combinaison de X-Ray et Soundtrack Live Sync en un seul appel pour la vidéo.
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: timestampSeconds
+          in: query
+          required: true
+          description: Position de lecture actuelle en secondes
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Données X-Ray et musicales pour la scène actuelle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XRayResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/me/challenges:
+    get:
+      summary: Consulter les défis de gamification et leur statut de complétion
+      tags: [Next-Gen]
+      responses:
+        '200':
+          description: Liste des défis avec progression
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Challenge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /watch-parties:
+    post:
+      summary: Créer une Watch Party synchronisée
+      tags: [Next-Gen]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchPartyCreateRequest'
+      responses:
+        '201':
+          description: Watch Party créée. Partagez l ID aux participants.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchParty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /watch-parties/{id}:
+    get:
+      summary: Consulter les détails d une Watch Party
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Détails de la Watch Party
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchParty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /watch-parties/{id}/join:
+    post:
+      summary: Rejoindre une Watch Party existante
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Watch Party rejointe avec succès !
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchParty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /watch-parties/{id}/leave:
+    post:
+      summary: Quitter une Watch Party
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Watch Party quittée avec succès
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /watch-parties/{id}/state:
+    put:
+      summary: Synchroniser la lecture (hôte uniquement) — play, pause, seek
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchPartyStateRequest'
+      responses:
+        '200':
+          description: État synchronisé pour tous les participants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                  positionSeconds:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

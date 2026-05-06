@@ -142,6 +142,32 @@ components:
           type: string
           format: date-time
 
+    UserUpdateRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        profilePicture:
+          type: string
+          format: binary
+          
+    Subscription:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, CANCELLED, PAST_DUE]
+        planName:
+          type: string
+          example: 'Prime Next-Gen Premium'
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        autoRenew:
+          type: boolean
+
     # --- PROFILES ---
     Profile:
       type: object
@@ -213,6 +239,26 @@ components:
           type: string
           format: time
           
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        ageLimite:
+          type: string
+          enum: ['TP', '8+', '12+', '16+', '18+']
+        pinCode:
+          type: string
+          pattern: '^[0-9]{4}$'
+        timeLimitStart:
+          type: string
+          format: time
+        timeLimitEnd:
+          type: string
+          format: time
+
     PinVerifyRequest:
       type: object
       required: [pinCode]
@@ -481,6 +527,52 @@ components:
           description: "Active le boost colorimétrique simulé pour les anciens contenus"
           example: true
 
+    # --- WATCH PARTY ---
+    WatchParty:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "wp-12345"
+        contentId:
+          type: integer
+          example: 1001
+        hostId:
+          type: integer
+          example: 42
+        participantIds:
+          type: array
+          items:
+            type: integer
+          example: [42, 89, 105]
+        status:
+          type: string
+          enum: [WAITING, PLAYING, PAUSED, ENDED]
+          example: "WAITING"
+        createdAt:
+          type: string
+          format: date-time
+          
+    WatchPartyCreateRequest:
+      type: object
+      required: [contentId]
+      properties:
+        contentId:
+          type: integer
+          example: 1001
+
+    WatchPartyStateRequest:
+      type: object
+      required: [status, positionSeconds]
+      properties:
+        status:
+          type: string
+          enum: [PLAYING, PAUSED, ENDED]
+        positionSeconds:
+          type: integer
+          description: "Position de lecture actuelle"
+          example: 120
+
   parameters:
     PageParam:
       name: page
@@ -590,6 +682,38 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Mettre à jour les informations de l'utilisateur
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Utilisateur mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /users/me/subscription:
+    get:
+      summary: Obtenir les détails de l'abonnement
+      tags: [Users, Paiements]
+      responses:
+        '200':
+          description: Détails de l'abonnement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
           
   /profiles:
     get:
@@ -627,6 +751,48 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
           
+  /profiles/{id}:
+    put:
+      summary: Modifier un profil existant
+      tags: [Profiles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: Profil mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      summary: Supprimer un profil
+      tags: [Profiles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Profil supprimé
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /profiles/{id}/verify-pin:
     post:
       summary: Vérifier le code PIN pour contourner une restriction d'âge ou changer de profil
@@ -656,6 +822,11 @@ paths:
       summary: Lister le catalogue de contenus avec filtres (UX Anti-Frustration)
       tags: [Catalog]
       parameters:
+        - name: q
+          in: query
+          description: Recherche par titre, réalisateur ou acteur
+          schema:
+            type: string
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/SizeParam'
         - name: categoryId
@@ -708,6 +879,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Content'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contents/{id}/episodes:
+    get:
+      summary: Lister les épisodes d'une série
+      tags: [Catalog]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: L'ID de la série
+          schema:
+            type: integer
+        - name: seasonNumber
+          in: query
+          description: Filtrer par numéro de saison
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des épisodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Episode'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -890,6 +1089,48 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /contents/{id}/reviews/{reviewId}:
+    put:
+      summary: Modifier son avis
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          description: Avis mis à jour
+    delete:
+      summary: Supprimer son avis
+      tags: [Interactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Avis supprimé
+
   /contents/{id}/smart-catchup:
     get:
       summary: Générer un résumé Smart Catch-up (IA)
@@ -973,3 +1214,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProfilePreferences'
+
+  /watch-parties:
+    post:
+      summary: Créer une Watch Party
+      tags: [Next-Gen]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchPartyCreateRequest'
+      responses:
+        '201':
+          description: Watch Party créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchParty'
+
+  /watch-parties/{id}/join:
+    post:
+      summary: Rejoindre une Watch Party existante
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Watch Party rejointe avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchParty'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /watch-parties/{id}/state:
+    put:
+      summary: Synchroniser l'état du lecteur (Host uniquement)
+      tags: [Next-Gen]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchPartyStateRequest'
+      responses:
+        '200':
+          description: État synchronisé pour tous les participants
+ 
