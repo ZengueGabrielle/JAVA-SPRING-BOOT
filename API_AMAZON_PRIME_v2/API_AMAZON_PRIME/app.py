@@ -85,11 +85,18 @@ def format_content(data):
         "releaseYear": data['release_year'],
         "ageRating": data['age_rating'],
         "thumbnailUrl": data['thumbnail_url'],
-        "requiresExtraPayment": bool(data['requires_extra_payment']),
+        "trailerUrl": data.get('trailer_url'),
+        "availabilityType": data.get('availability_type', 'INCLUDED_WITH_PRIME'),
+        "rentPrice": data.get('rent_price'),
+        "buyPrice": data.get('buy_price'),
+        "videoQualities": data.get('video_qualities', '').split(',') if data.get('video_qualities') else [],
+        "audioFormats": data.get('audio_formats', '').split(',') if data.get('audio_formats') else [],
         "durationMinutes": data.get('duration_minutes'),
+        "creditsStartSeconds": data.get('credits_start_seconds'),
         "director": data.get('director'),
         "totalSeasons": data.get('total_seasons'),
         "creator": data.get('creator'),
+        "tags": data.get('tags', '').split(',') if data.get('tags') else [],
         "categories": []
     }
 
@@ -134,6 +141,33 @@ def init_db():
         )
     ''')
 
+    # --- DEVICES ---
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS devices (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER,
+            device_name TEXT,
+            device_type TEXT,
+            last_active_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    ''')
+
+    # --- PURCHASES ---
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS purchases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            content_id INTEGER,
+            purchase_type TEXT,
+            amount REAL,
+            purchase_date TEXT,
+            expires_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(content_id) REFERENCES contents(id)
+        )
+    ''')
+
     # --- CONTENUS ---
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS contents (
@@ -144,11 +178,18 @@ def init_db():
             release_year INTEGER,
             age_rating TEXT DEFAULT '18+',
             thumbnail_url TEXT DEFAULT '',
-            requires_extra_payment INTEGER DEFAULT 0,
+            trailer_url TEXT,
+            availability_type TEXT DEFAULT 'INCLUDED_WITH_PRIME',
+            rent_price REAL,
+            buy_price REAL,
+            video_qualities TEXT DEFAULT '1080p',
+            audio_formats TEXT DEFAULT 'Stereo',
             duration_minutes INTEGER,
+            credits_start_seconds INTEGER,
             director TEXT,
             total_seasons INTEGER,
-            creator TEXT
+            creator TEXT,
+            tags TEXT
         )
     ''')
 
@@ -176,6 +217,9 @@ def init_db():
             episode_number INTEGER,
             title TEXT,
             duration_minutes INTEGER DEFAULT 45,
+            intro_start_seconds INTEGER,
+            intro_end_seconds INTEGER,
+            credits_start_seconds INTEGER,
             is_filler INTEGER DEFAULT 0,
             has_post_credits_scene INTEGER DEFAULT 0,
             FOREIGN KEY (series_id) REFERENCES contents(id)
@@ -305,27 +349,27 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM contents")
     if cursor.fetchone()[0] == 0:
         default_contents = [
-            ("The Boys", "Un groupe de justiciers s'attaque à des super-héros corrompus.", "SERIES", 2019, "18+", "https://cdn.prime.local/thumbs/theboys.jpg", 0, None, None, 4, "Eric Kripke"),
-            ("Invincible", "Mark Grayson est un adolescent normal, sauf que son père est le super-héros le plus puissant.", "SERIES", 2021, "16+", "https://cdn.prime.local/thumbs/invincible.jpg", 0, None, None, 3, "Robert Kirkman"),
-            ("The Terminal List", "Un Navy SEAL enquête sur les évènements qui ont coûté la vie à ses hommes.", "SERIES", 2022, "18+", "https://cdn.prime.local/thumbs/terminallist.jpg", 0, None, None, 1, "David DiGilio"),
-            ("Everything Everywhere All at Once", "Une femme découvre qu'elle doit parcourir des univers parallèles.", "MOVIE", 2022, "12+", "https://cdn.prime.local/thumbs/eeaao.jpg", 0, 139, "Daniel Kwan & Daniel Scheinert", None, None),
-            ("Reacher", "Un ancien policier militaire enquête sur des crimes dans une petite ville.", "SERIES", 2022, "16+", "https://cdn.prime.local/thumbs/reacher.jpg", 0, None, None, 3, "Nick Santora"),
+            ("The Boys", "Un groupe de justiciers s'attaque à des super-héros corrompus.", "SERIES", 2019, "18+", "https://cdn.prime.local/thumbs/theboys.jpg", "https://cdn.prime.local/trailers/theboys.mp4", "INCLUDED_WITH_PRIME", None, None, "4K UHD,HDR10", "Dolby Atmos,5.1", None, None, None, 4, "Eric Kripke", "Super-héros,Action,Gore"),
+            ("Invincible", "Mark Grayson est un adolescent normal, sauf que son père est le super-héros le plus puissant.", "ANIME", 2021, "16+", "https://cdn.prime.local/thumbs/invincible.jpg", None, "INCLUDED_WITH_PRIME", None, None, "1080p", "5.1", None, None, None, 3, "Robert Kirkman", "Super-héros,Animation,Gore"),
+            ("The Terminal List", "Un Navy SEAL enquête sur les évènements qui ont coûté la vie à ses hommes.", "SERIES", 2022, "18+", "https://cdn.prime.local/thumbs/terminallist.jpg", None, "INCLUDED_WITH_PRIME", None, None, "4K UHD", "5.1", None, None, None, 1, "David DiGilio", "Action,Militaire"),
+            ("Everything Everywhere All at Once", "Une femme découvre qu'elle doit parcourir des univers parallèles.", "MOVIE", 2022, "12+", "https://cdn.prime.local/thumbs/eeaao.jpg", None, "RENT", 4.99, 11.99, "4K UHD,HDR10", "Dolby Atmos", 139, 8100, "Daniel Kwan & Daniel Scheinert", None, None, "Comédie,SF,Arts Martiaux"),
+            ("Peppa Pig", "Les aventures de Peppa le cochon et de sa famille.", "ANIME", 2004, "TP", "https://cdn.prime.local/thumbs/peppa.jpg", None, "INCLUDED_WITH_PRIME", None, None, "1080p", "Stereo", None, None, None, 7, "Neville Astley", "Jeunesse,Éducatif,Famille")
         ]
         cursor.executemany('''
-            INSERT INTO contents (title, description, content_type, release_year, age_rating, thumbnail_url, requires_extra_payment, duration_minutes, director, total_seasons, creator)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO contents (title, description, content_type, release_year, age_rating, thumbnail_url, trailer_url, availability_type, rent_price, buy_price, video_qualities, audio_formats, duration_minutes, credits_start_seconds, director, total_seasons, creator, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', default_contents)
 
         # Episodes pour The Boys (id=1)
         episodes_data = [
-            (1, 1, 1, "Le nom du jeu", 60, 0, 1),
-            (1, 1, 2, "Ce qui est invisible", 55, 0, 0),
-            (1, 1, 3, "Popclaw", 52, 0, 0),
-            (1, 2, 1, "La grande fuite", 58, 0, 1),
+            (1, 1, 1, "Le nom du jeu", 60, 120, 180, 3450, 0, 1),
+            (1, 1, 2, "Ce qui est invisible", 55, 120, 180, 3150, 0, 0),
+            (1, 1, 3, "Popclaw", 52, 120, 180, 2980, 0, 0),
+            (1, 2, 1, "La grande fuite", 58, 120, 180, 3350, 0, 1),
         ]
         cursor.executemany('''
-            INSERT INTO episodes (series_id, season_number, episode_number, title, duration_minutes, is_filler, has_post_credits_scene)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO episodes (series_id, season_number, episode_number, title, duration_minutes, intro_start_seconds, intro_end_seconds, credits_start_seconds, is_filler, has_post_credits_scene)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', episodes_data)
 
     cursor.execute("SELECT COUNT(*) FROM categories")
@@ -751,6 +795,74 @@ def format_profile(p):
     }
 
 # ============================================================
+# NOUVELLES ROUTES (DASHBOARD, X-RAY, DEVICES, PURCHASES)
+# ============================================================
+
+@app.route('/api/v1/auth/forgot-password', methods=['POST'])
+def forgot_password():
+    return jsonify({"message": "Email de réinitialisation envoyé"}), 200
+
+@app.route('/api/v1/auth/reset-password', methods=['POST'])
+def reset_password():
+    return jsonify({"message": "Mot de passe mis à jour"}), 200
+
+@app.route('/api/v1/auth/verify-email', methods=['POST'])
+def verify_email():
+    return jsonify({"message": "Email vérifié"}), 200
+
+@app.route('/api/v1/users/me/devices', methods=['GET'])
+def get_devices():
+    user = get_user_from_token(request)
+    if not user: return jsonify({"status": 401, "error": "Unauthorized"}), 401
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE user_id=?", (user['id'],))
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows]), 200
+
+@app.route('/api/v1/users/me/devices/<string:device_id>', methods=['DELETE'])
+def delete_device(device_id):
+    user = get_user_from_token(request)
+    if not user: return jsonify({"status": 401, "error": "Unauthorized"}), 401
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM devices WHERE id=? AND user_id=?", (device_id, user['id']))
+    conn.commit()
+    conn.close()
+    return '', 204
+
+@app.route('/api/v1/users/me/purchases', methods=['GET'])
+def get_purchases():
+    user = get_user_from_token(request)
+    if not user: return jsonify({"status": 401, "error": "Unauthorized"}), 401
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM purchases WHERE user_id=?", (user['id'],))
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows]), 200
+
+@app.route('/api/v1/home/dashboard', methods=['GET'])
+def get_dashboard():
+    return jsonify([
+        {"id": "shelf-trending", "title": "Top 10 en France aujourd'hui", "contents": []},
+        {"id": "shelf-kids", "title": "Section Jeunesse", "contents": []}
+    ]), 200
+
+@app.route('/api/v1/contents/<int:content_id>/xray/current', methods=['GET'])
+def get_xray_current(content_id):
+    timestamp = request.args.get('timestampSeconds', 0)
+    return jsonify({
+        "actorsOnScreen": [{"actorName": "Karl Urban", "characterName": "Billy Butcher", "imageUrl": ""}],
+        "trivia": "Anecdote de tournage pour la scène actuelle.",
+        "currentSoundtrack": {
+            "trackName": "Shape of My Heart", "artist": "Sting", 
+            "spotifyUrl": "https://open.spotify.com/...", "deezerUrl": "https://deezer.com/...", "timestampSeconds": int(timestamp)
+        }
+    }), 200
+
+# ============================================================
 # CATALOGUE
 # ============================================================
 
@@ -771,8 +883,9 @@ def get_contents():
     size = int(request.args.get('size', 20))
     category_id = request.args.get('categoryId')
     min_age = request.args.get('minAge')
-    zero_cost = request.args.get('zeroCostOnly', 'false').lower() == 'true'
+    availability = request.args.get('availabilityType')
     content_type = request.args.get('contentType')
+    tag = request.args.get('tags')
 
     conn = get_db()
     cursor = conn.cursor()
@@ -782,11 +895,28 @@ def get_contents():
     if q:
         query += " AND (title LIKE ? OR description LIKE ? OR director LIKE ? OR creator LIKE ?)"
         params.extend([f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'])
-    if zero_cost:
-        query += " AND requires_extra_payment = 0"
-    if content_type in ('MOVIE', 'SERIES'):
+    
+    if availability:
+        query += " AND availability_type = ?"
+        params.append(availability)
+
+    if content_type:
         query += " AND content_type = ?"
         params.append(content_type)
+    
+    if tag:
+        query += " AND tags LIKE ?"
+        params.append(f'%{tag}%')
+
+    if min_age:
+        # Logique de cascade : si on demande TP, on ne voit QUE TP. 
+        # Si on demande 18+, on voit tout (TP, 8, 12, 16, 18).
+        age_hierarchy = ['TP', '8+', '12+', '16+', '18+']
+        if min_age in age_hierarchy:
+            allowed_ages = age_hierarchy[:age_hierarchy.index(min_age)+1]
+            placeholders = ','.join(['?'] * len(allowed_ages))
+            query += f" AND age_rating IN ({placeholders})"
+            params.extend(allowed_ages)
 
     cursor.execute(query, params)
     all_rows = cursor.fetchall()
@@ -839,6 +969,9 @@ def get_episodes(content_id):
         "id": r['id'], "seriesId": r['series_id'],
         "seasonNumber": r['season_number'], "episodeNumber": r['episode_number'],
         "title": r['title'], "durationMinutes": r['duration_minutes'],
+        "introStartSeconds": r['intro_start_seconds'],
+        "introEndSeconds": r['intro_end_seconds'],
+        "creditsStartSeconds": r['credits_start_seconds'],
         "isFiller": bool(r['is_filler']), "hasPostCreditsScene": bool(r['has_post_credits_scene'])
     } for r in rows]), 200
 
@@ -856,7 +989,7 @@ def get_stream(content_id):
     if not row:
         return jsonify({"status": 404, "error": "Not Found", "message": "Contenu introuvable"}), 404
     data = dict_from_row(row)
-    if data['requires_extra_payment']:
+    if data.get('availability_type') != 'INCLUDED_WITH_PRIME':
         return jsonify({"status": 403, "error": "Forbidden", "message": "Ce contenu requiert un paiement supplémentaire"}), 403
     return jsonify({
         "streamUrl": f"https://video-edge.prime.local/hls/{content_id}/master.m3u8",

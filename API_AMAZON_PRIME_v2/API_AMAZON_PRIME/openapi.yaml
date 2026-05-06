@@ -114,6 +114,8 @@ components:
           type: string
           format: password
           minLength: 8
+          pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+          description: 'Min 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial (@$!%*?&)'
           example: 'StrongP@ssw0rd'
         firstName:
           type: string
@@ -187,6 +189,8 @@ components:
           type: string
           format: password
           minLength: 8
+          pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+          description: 'Min 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial (@$!%*?&)'
 
     EmailVerifyRequest:
       type: object
